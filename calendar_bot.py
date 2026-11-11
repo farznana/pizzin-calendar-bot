@@ -165,7 +165,6 @@ async def event_reminder_task():
     if expired_ids:
         for eid in expired_ids:
             events_records.pop(eid, None)
-            # Cleanup user registrations for expired events
             for uid in user_registrations:
                 user_registrations[uid].discard(eid)
                 
@@ -185,7 +184,7 @@ class EventSelectDropdown(discord.ui.Select):
             options.append(discord.SelectOption(label="No active events available", value="none", description="Check back later!"))
         else:
             for eid, data in sorted(events_records.items(), key=lambda x: parse_date_str(x[1]["date"]) or date.max):
-                label_text = f"[{eid}] {data['title']}"[:100] # Discord limit 100 chars
+                label_text = f"[{eid}] {data['title']}"[:100]
                 desc_text = f"Date: {data['date']} | Host: {data['category']}"[:100]
                 options.append(discord.SelectOption(label=label_text, value=str(eid), description=desc_text, emoji="🎫"))
 
@@ -221,29 +220,42 @@ class EventSelectDropdown(discord.ui.Select):
 class CalendarControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+        # Add Dropdown first
         self.add_item(EventSelectDropdown())
+        
+        # Add buttons using proper UI Button class with row specification
+        self.add_item(discord.ui.Button(
+            label="📋 My Registered Events", 
+            style=discord.ButtonStyle.secondary, 
+            custom_id="my_events_btn", 
+            row=1
+        ))
+        self.add_item(discord.ui.Button(
+            label="📩 Contact Support / Host", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com", 
+            row=1
+        ))
 
-    @discord.ui.button(label="📋 My Registered Events", style=discord.ButtonStyle.secondary, custom_id="my_events_btn", row=1)
-    async def my_events(self, interaction: discord.Interaction, button: discord.ui.Button):
-        uid = interaction.user.id
-        registered_ids = user_registrations.get(uid, set())
-        # Filter valid current events
-        active_regs = [eid for eid in registered_ids if eid in events_records]
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Handle custom button callback for 'My Registered Events'
+        if interaction.data.get("custom_id") == "my_events_btn":
+            uid = interaction.user.id
+            registered_ids = user_registrations.get(uid, set())
+            active_regs = [eid for eid in registered_ids if eid in events_records]
 
-        if not active_regs:
-            await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
-            return
+            if not active_regs:
+                await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+                return False
 
-        lines = ["**Your Registered Events:**"]
-        for eid in active_regs:
-            ev = events_records[eid]
-            lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: `{ev['location']}`")
+            lines = ["**Your Registered Events:**"]
+            for eid in active_regs:
+                ev = events_records[eid]
+                lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: `{ev['location']}`")
 
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-    @discord.ui.button(label="📩 Contact Support / Host", style=discord.ButtonStyle.link, url="https://discord.com", row=1)
-    async def contact_host(self, interaction: discord.Interaction, button: discord.ui.Button):
-        pass # URL button handled natively by Discord
+            await interaction.response.send_message("\n".join(lines), ephemeral=True)
+            return False
+        return True
 
 # ==============================================================================
 # 5. CALENDAR BOARD RENDERER
@@ -379,7 +391,6 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         return
         
     deleted = events_records.pop(event_id)
-    # Cleanup user registrations
     for uid in user_registrations:
         user_registrations[uid].discard(event_id)
 
