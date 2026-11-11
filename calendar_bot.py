@@ -89,14 +89,9 @@ def get_next_event_id():
     return candidate
 
 def format_location_display(guild, location_str):
-    """
-    If location contains a channel tag (<#CHANNEL_ID>) or raw channel link,
-    format it cleanly as a clickable jump link. Otherwise return formatted string.
-    """
     if not location_str:
         return "TBA"
         
-    # Check if input is a raw channel mention like <#123456789>
     match = re.search(r'<#(\d+)>', location_str)
     if match:
         channel_id = int(match.group(1))
@@ -106,9 +101,7 @@ def format_location_display(guild, location_str):
             return f"[{channel_name}](https://discord.com/channels/{guild.id}/{channel_id})"
         return f"<#{channel_id}>"
 
-    # Check if input is already a full HTTPS Discord channel URL
     if "discord.com/channels/" in location_str:
-        # Hide ugly URL inside clean markdown link
         return f"[🔗 Jump to Channel]({location_str.strip()})"
         
     return f"`{location_str}`"
@@ -125,7 +118,7 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CLEANUP
+# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CLEANUP (2 Days Buffer)
 # ==============================================================================
 @tasks.loop(hours=24)
 async def event_reminder_task():
@@ -183,7 +176,8 @@ async def event_reminder_task():
                             f"> 💬 *{data['desc']}*"
                         )
             
-            if parsed_date < today:
+            # Keep event on board for 2 days after event date before auto-cleanup
+            if parsed_date < (today - timedelta(days=2)):
                 expired_ids.append(eid)
                 completed_events_count += 1
                 
@@ -328,7 +322,7 @@ async def update_calendar_board(guild):
             elif ev_date and ev_date > today:
                 status_badge = "⏳ [UPCOMING]"
             else:
-                status_badge = "📌 [SCHEDULED]"
+                status_badge = "📌 [RECENTLY CONCLUDED]"
 
             category = data.get('category', 'EVENT')
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
@@ -337,9 +331,9 @@ async def update_calendar_board(guild):
             try:
                 dt_obj = datetime.combine(ev_date, datetime.min.time())
                 timestamp_val = int(dt_obj.timestamp())
-                time_display = f"<t:{timestamp_val}:F>"
+                time_display = f"<t:{timestamp_val}:D> ({data['time']})"
             except Exception:
-                time_display = f"{data['date']} at `{data['time']}`"
+                time_display = f"{data['date']} (`{data['time']}`)"
 
             field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
@@ -420,7 +414,7 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         return
         
     if event_id not in events_records:
-        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist in the records.", ephemeral=True)
+        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist in the records.", ephemeral=Thread=True)
         return
         
     deleted = events_records.pop(event_id)
