@@ -176,7 +176,6 @@ async def event_reminder_task():
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # Keep event on board for 2 days after event date before auto-cleanup
             if parsed_date < (today - timedelta(days=2)):
                 expired_ids.append(eid)
                 completed_events_count += 1
@@ -380,7 +379,7 @@ async def add_event(
     location: str,
     how_to_join: str,
     ping_role: discord.Role = None, 
-    category: str = "COMMUNITY", 
+    category: str, 
     description: str = "Official details will be announced shortly."
 ):
     await interaction.response.defer(ephemeral=True)
@@ -414,7 +413,7 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         return
         
     if event_id not in events_records:
-        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist in the records.", ephemeral=Thread=True)
+        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist in the records.", ephemeral=True)
         return
         
     deleted = events_records.pop(event_id)
