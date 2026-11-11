@@ -28,11 +28,11 @@ def run_web_server():
 threading.Thread(target=run_web_server, daemon=True).start()
 
 # ==============================================================================
-# 2. DISCORD BOT SETUP & CONFIGURATION
+# 2. DISCORD BOT SETUP & CONFIGURATION (100% Slash Commands - No Prefix)
 # ==============================================================================
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix=None, intents=intents)
 
 CALENDAR_CHANNEL_ID = 1563446765657657394  
 
@@ -423,14 +423,14 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
     await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*) from the calendar.", ephemeral=True)
     await update_calendar_board(interaction.guild)
 
-@bot.command()
-async def setup_calendar(ctx):
-    if ctx.author.id in ALLOWED_ADMINS:
-        await update_calendar_board(ctx.guild)
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
+@bot.tree.command(name="setup_calendar", description="[Admin/Floater] Initialize or refresh the master calendar board")
+async def setup_calendar(interaction: discord.Interaction):
+    if interaction.user.id not in ALLOWED_ADMINS:
+        await interaction.response.send_message("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    await update_calendar_board(interaction.guild)
+    await interaction.followup.send("✅ Calendar board initialized successfully!", ephemeral=True)
 
 # ==============================================================================
 # 7. RUN BOT
