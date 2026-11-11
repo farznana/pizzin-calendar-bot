@@ -60,6 +60,7 @@ ALLOWED_ADMINS = {
 calendar_message_id = None
 events_records = {}  
 completed_events_count = 0  
+user_registrations = {} # Track user RSVP / event signups: {user_id: set(event_ids)}
 
 MONTH_MAP = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -164,6 +165,9 @@ async def event_reminder_task():
     if expired_ids:
         for eid in expired_ids:
             events_records.pop(eid, None)
+            # Cleanup user registrations for expired events
+            for uid in user_registrations:
+                user_registrations[uid].discard(eid)
                 
         for guild in bot.guilds:
             channel = guild.get_channel(CALENDAR_CHANNEL_ID)
@@ -172,25 +176,74 @@ async def event_reminder_task():
                 break
 
 # ==============================================================================
-# 4. INTERACTIVE VIEWS (Buttons for Join & Contact Host)
+# 4. INTERACTIVE DROPDOWN & BUTTON VIEWS (Option 1 Enhanced)
 # ==============================================================================
-class EventControlView(discord.ui.View):
-    def __init__(self, host_id: int):
-        super().__init__(timeout=None)
-        # Fixed valid HTTPS URL for Discord user profile link
-        host_url = f"https://discord.com/users/{host_id}" if host_id else "https://discord.com"
-        self.add_item(discord.ui.Button(
-            label="📩 Contact Host", 
-            style=discord.ButtonStyle.link, 
-            url=host_url
-        ))
+class EventSelectDropdown(discord.ui.Select):
+    def __init__(self):
+        options = []
+        if not events_records:
+            options.append(discord.SelectOption(label="No active events available", value="none", description="Check back later!"))
+        else:
+            for eid, data in sorted(events_records.items(), key=lambda x: parse_date_str(x[1]["date"]) or date.max):
+                label_text = f"[{eid}] {data['title']}"[:100] # Discord limit 100 chars
+                desc_text = f"Date: {data['date']} | Host: {data['category']}"[:100]
+                options.append(discord.SelectOption(label=label_text, value=str(eid), description=desc_text, emoji="🎫"))
 
-    @discord.ui.button(label="🎫 Join Event", style=discord.ButtonStyle.green, custom_id="join_event_btn")
-    async def join_event(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            "✅ You have successfully registered/marked attendance for this event! The host will see your participation.", 
-            ephemeral=True
-        )
+        super().__init__(placeholder="🔽 Select a specific event to join...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none":
+            await interaction.response.send_message("❌ There are no active events to join right now.", ephemeral=True)
+            return
+
+        eid = int(self.values[0])
+        if eid not in events_records:
+            await interaction.response.send_message("❌ This event no longer exists or has already concluded.", ephemeral=True)
+            return
+
+        event = events_records[eid]
+        uid = interaction.user.id
+        if uid not in user_registrations:
+            user_registrations[uid] = set()
+
+        if eid in user_registrations[uid]:
+            await interaction.response.send_message(f"⚠️ You are already registered for **{event['title']}** (ID: {eid})!", ephemeral=True)
+        else:
+            user_registrations[uid].add(eid)
+            await interaction.response.send_message(
+                f"✅ Successfully registered for **{event['title']}** (ID: `{eid}`)!\n"
+                f"📍 **Location:** `{event['location']}`\n"
+                f"🎯 **How to Join:** {event['how_join']}\n"
+                f"See you there!", 
+                ephemeral=True
+            )
+
+class CalendarControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(EventSelectDropdown())
+
+    @discord.ui.button(label="📋 My Registered Events", style=discord.ButtonStyle.secondary, custom_id="my_events_btn", row=1)
+    async def my_events(self, interaction: discord.Interaction, button: discord.ui.Button):
+        uid = interaction.user.id
+        registered_ids = user_registrations.get(uid, set())
+        # Filter valid current events
+        active_regs = [eid for eid in registered_ids if eid in events_records]
+
+        if not active_regs:
+            await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+            return
+
+        lines = ["**Your Registered Events:**"]
+        for eid in active_regs:
+            ev = events_records[eid]
+            lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: `{ev['location']}`")
+
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+    @discord.ui.button(label="📩 Contact Support / Host", style=discord.ButtonStyle.link, url="https://discord.com", row=1)
+    async def contact_host(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass # URL button handled natively by Discord
 
 # ==============================================================================
 # 5. CALENDAR BOARD RENDERER
@@ -262,8 +315,7 @@ async def update_calendar_board(guild):
 
     embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
 
-    sample_host = list(events_records.values())[0]['host_id'] if events_records else 723800522947166218
-    view = EventControlView(sample_host)
+    view = CalendarControlView()
 
     if calendar_message_id:
         try:
@@ -327,6 +379,10 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         return
         
     deleted = events_records.pop(event_id)
+    # Cleanup user registrations
+    for uid in user_registrations:
+        user_registrations[uid].discard(event_id)
+
     await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*) from the calendar.", ephemeral=True)
     await update_calendar_board(interaction.guild)
 
