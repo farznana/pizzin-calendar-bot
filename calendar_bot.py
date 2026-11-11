@@ -59,7 +59,7 @@ ALLOWED_ADMINS = {
 
 calendar_message_id = None
 events_records = {}  
-completed_events_count = 0  # Monthly Archive Log counter
+completed_events_count = 0  
 
 MONTH_MAP = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -177,11 +177,12 @@ async def event_reminder_task():
 class EventControlView(discord.ui.View):
     def __init__(self, host_id: int):
         super().__init__(timeout=None)
-        # Add Contact Host direct link button
+        # Fixed valid HTTPS URL for Discord user profile link
+        host_url = f"https://discord.com/users/{host_id}" if host_id else "https://discord.com"
         self.add_item(discord.ui.Button(
             label="📩 Contact Host", 
             style=discord.ButtonStyle.link, 
-            url=f"discordchannels://users/{host_id}" if host_id else "https://discord.com"
+            url=host_url
         ))
 
     @discord.ui.button(label="🎫 Join Event", style=discord.ButtonStyle.green, custom_id="join_event_btn")
@@ -200,7 +201,6 @@ async def update_calendar_board(guild):
     if not channel:
         return
 
-    # Check if any event is LIVE TODAY for dynamic embed accent color
     today = date.today()
     has_live_event = any(parse_date_str(d["date"]) == today for d in events_records.values())
     embed_color = discord.Color.from_rgb(239, 83, 80) if has_live_event else discord.Color.from_rgb(255, 193, 7)
@@ -210,7 +210,6 @@ async def update_calendar_board(guild):
         color=embed_color
     )
     
-    # Option A: Permanent Operational Notice Header
     notice_text = (
         "```yaml\n"
         "📌 REGULAR CLUB OPERATIONS:\n"
@@ -242,7 +241,6 @@ async def update_calendar_board(guild):
             role_display = f"<@&{data['role_id']}>" if data.get('role_id') else "None"
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
             
-            # Dynamic Discord Timestamp conversion
             try:
                 dt_obj = datetime.combine(ev_date, datetime.min.time())
                 timestamp_val = int(dt_obj.timestamp())
@@ -258,14 +256,12 @@ async def update_calendar_board(guild):
                 events_lines.append(f"> 💬 *{data['desc']}*")
             events_lines.append("────────────────────────────────────────")
             
-        # Monthly Archive Log Section
         events_lines.append(f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`")
         
         embed.description = "\n".join(events_lines)
 
     embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
 
-    # Get first host id for button view fallback, or default admin
     sample_host = list(events_records.values())[0]['host_id'] if events_records else 723800522947166218
     view = EventControlView(sample_host)
 
