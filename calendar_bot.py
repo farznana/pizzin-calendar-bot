@@ -33,7 +33,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-CALENDAR_CHANNEL_ID = 1372224968535834635  
+# Updated to correct channel ID from user link
+CALENDAR_CHANNEL_ID = 1563446765657657394  
 
 # --- AUTHORIZED ADMINS & FLOATERS ---
 ALLOWED_ADMINS = {
@@ -48,12 +49,12 @@ ALLOWED_ADMINS = {
     1527320411082068018, # fanaem00 (Executive / Nana)
     753681817776947282,  # renzoor145 (Executive)
     
-    # Floaters (Add Discord User IDs below)
-    741251553452752976, # cyan143 (FLOATER)
-    795323523132293160, # gwendita_zai (FLOATER)
+    # Floaters
+    741251553452752976,  # cyan143 (FLOATER)
+    795323523132293160,  # gwendita_zai (FLOATER)
     1332012068798206073, # lincy_2003_73773 (FLOATER)
-    848524697205342278, # maxx_712 (FLOATER)
-    837199088922787850, # smolsanson (FLOATER)
+    848524697205342278,  # maxx_712 (FLOATER)
+    837199088922787850,  # smolsanson (FLOATER)
     1322558573699403918, # soyoneul (FLOATER)
 }
 
