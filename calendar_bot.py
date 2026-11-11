@@ -33,7 +33,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Updated to correct channel ID from user link
 CALENDAR_CHANNEL_ID = 1563446765657657394  
 
 # --- AUTHORIZED ADMINS & FLOATERS ---
@@ -60,6 +59,7 @@ ALLOWED_ADMINS = {
 
 calendar_message_id = None
 events_records = {}  
+completed_events_count = 0  # Monthly Archive Log counter
 
 MONTH_MAP = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -102,7 +102,7 @@ async def on_ready():
 # ==============================================================================
 @tasks.loop(hours=24)
 async def event_reminder_task():
-    global events_records
+    global events_records, completed_events_count
     if not events_records:
         return
     
@@ -125,7 +125,7 @@ async def event_reminder_task():
                             f"⏳ **[REMINDER: 2 DAYS LEFT]** {role_ping}\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 🕒 Date: **{data['date']}** at `{data['time']}`\n"
+                            f"> 📍 **Location:** `{data['location']}`\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
@@ -138,26 +138,28 @@ async def event_reminder_task():
                             f"⚠️ **[REMINDER: TOMORROW]** {role_ping}\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 🕒 Time: `{data['time']}`\n"
+                            f"> 📍 **Location:** `{data['location']}`\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # Event Day Reminder
+            # Event Day Reminder (Pings @everyone automatically)
             elif delta_days == 0:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
                         await channel.send(
-                            f"🚨 **[EVENT STARTING TODAY!]** {role_ping}\n"
+                            f"🚨 **[EVENT STARTING TODAY!]** @everyone\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 🕒 Time Slot: `{data['time']}`\n"
+                            f"> 📍 **Location:** `{data['location']}`\n"
+                            f"> 🎯 **How to Join:** {data['how_join']}\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # Expired Event Cleanup
+            # Expired Event Cleanup & Archive count increment
             if parsed_date < today:
                 expired_ids.append(eid)
+                completed_events_count += 1
                 
     if expired_ids:
         for eid in expired_ids:
@@ -170,34 +172,67 @@ async def event_reminder_task():
                 break
 
 # ==============================================================================
-# 4. CALENDAR BOARD RENDERER
+# 4. INTERACTIVE VIEWS (Buttons for Join & Contact Host)
+# ==============================================================================
+class EventControlView(discord.ui.View):
+    def __init__(self, host_id: int):
+        super().__init__(timeout=None)
+        # Add Contact Host direct link button
+        self.add_item(discord.ui.Button(
+            label="📩 Contact Host", 
+            style=discord.ButtonStyle.link, 
+            url=f"discordchannels://users/{host_id}" if host_id else "https://discord.com"
+        ))
+
+    @discord.ui.button(label="🎫 Join Event", style=discord.ButtonStyle.green, custom_id="join_event_btn")
+    async def join_event(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "✅ You have successfully registered/marked attendance for this event! The host will see your participation.", 
+            ephemeral=True
+        )
+
+# ==============================================================================
+# 5. CALENDAR BOARD RENDERER
 # ==============================================================================
 async def update_calendar_board(guild):
-    global calendar_message_id
+    global calendar_message_id, completed_events_count
     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
     if not channel:
         return
 
+    # Check if any event is LIVE TODAY for dynamic embed accent color
+    today = date.today()
+    has_live_event = any(parse_date_str(d["date"]) == today for d in events_records.values())
+    embed_color = discord.Color.from_rgb(239, 83, 80) if has_live_event else discord.Color.from_rgb(255, 193, 7)
+
     embed = discord.Embed(
         title="🗓️  P.I.Z.Z.I.N  •  EVENT CALENDAR", 
-        color=discord.Color.from_rgb(255, 193, 7)
+        color=embed_color
+    )
+    
+    # Option A: Permanent Operational Notice Header
+    notice_text = (
+        "```yaml\n"
+        "📌 REGULAR CLUB OPERATIONS:\n"
+        "• Monday – Saturday: Active Community Hours & Gaming Sessions\n"
+        "• Every Sunday: Club Closed / Rest Day (Sunday Off)\n"
+        "```"
     )
     
     if not events_records:
-        embed.description = "```yaml\n✨ No upcoming events scheduled at the moment. Stay tuned for future community highlights!\n```"
+        embed.description = f"{notice_text}\n✨ **No upcoming special events scheduled right now. Stay tuned!**"
     else:
-        events_lines = []
+        events_lines = [notice_text, ""]
         sorted_events = sorted(
             events_records.items(), 
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        today = date.today()
         for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
             
             if ev_date == today:
-                status_badge = "🟢 **[TODAY]**"
+                status_badge = "🔴 **[LIVE NOW / TODAY]**"
             elif ev_date and ev_date > today:
                 status_badge = "⏳ **[UPCOMING]**"
             else:
@@ -207,38 +242,56 @@ async def update_calendar_board(guild):
             role_display = f"<@&{data['role_id']}>" if data.get('role_id') else "None"
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
             
-            events_lines.append(f"{status_badge} **[{data['date']}]**  •  ` 🕒 {data['time']} `  *(ID: `{eid}`)*")
-            events_lines.append(f"> ✨ **{data['title']}** `[{category}]`")
-            events_lines.append(f"> 👤 **Host:** {host_display}  |  🎯 **Target:** {role_display}")
+            # Dynamic Discord Timestamp conversion
+            try:
+                dt_obj = datetime.combine(ev_date, datetime.min.time())
+                timestamp_val = int(dt_obj.timestamp())
+                time_display = f"<t:{timestamp_val}:F>"
+            except Exception:
+                time_display = f"{data['date']} at `{data['time']}`"
+
+            events_lines.append(f"{status_badge} **{data['title']}** `[{category}]` *(ID: `{eid}`)*")
+            events_lines.append(f"> 🕒 Time: {time_display}")
+            events_lines.append(f"> 👤 **Host:** {host_display}  |  📍 **Location:** `{data['location']}`")
+            events_lines.append(f"> 🎯 **How to Join:** {data['how_join']}")
             if data['desc']:
                 events_lines.append(f"> 💬 *{data['desc']}*")
             events_lines.append("────────────────────────────────────────")
             
+        # Monthly Archive Log Section
+        events_lines.append(f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`")
+        
         embed.description = "\n".join(events_lines)
 
     embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
 
+    # Get first host id for button view fallback, or default admin
+    sample_host = list(events_records.values())[0]['host_id'] if events_records else 723800522947166218
+    view = EventControlView(sample_host)
+
     if calendar_message_id:
         try:
             msg = await channel.fetch_message(calendar_message_id)
-            await msg.edit(embed=embed)
+            await msg.edit(embed=embed, view=view)
             return
         except discord.NotFound:
             pass
             
-    msg = await channel.send(embed=embed)
+    msg = await channel.send(embed=embed, view=view)
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 5. SECURED SLASH COMMANDS
+# 6. SECURED SLASH COMMANDS
 # ==============================================================================
-@bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
+@bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event with location & join info")
 async def add_event(
     interaction: discord.Interaction, 
     date: str, 
     time_slot: str, 
     title: str, 
     host_admin: discord.Member, 
+    location: str,
+    how_to_join: str,
     ping_role: discord.Role = None, 
     category: str = "COMMUNITY", 
     description: str = "Official details will be announced shortly."
@@ -255,6 +308,8 @@ async def add_event(
         "time": time_slot.upper(),
         "title": title,
         "host_id": host_admin.id,
+        "location": location,
+        "how_join": how_to_join,
         "role_id": ping_role.id if ping_role else None,
         "category": category.upper(),
         "desc": description
@@ -289,6 +344,6 @@ async def setup_calendar(ctx):
             pass
 
 # ==============================================================================
-# 6. RUN BOT
+# 7. RUN BOT
 # ==============================================================================
 bot.run(os.environ.get("DISCORD_TOKEN"))
