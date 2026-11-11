@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import os
 import threading
+import re
 from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -60,7 +61,7 @@ ALLOWED_ADMINS = {
 calendar_message_id = None
 events_records = {}  
 completed_events_count = 0  
-user_registrations = {} # Track user RSVP / event signups: {user_id: set(event_ids)}
+user_registrations = {} 
 
 MONTH_MAP = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -86,6 +87,31 @@ def get_next_event_id():
     while candidate in existing_ids:
         candidate += 1
     return candidate
+
+def format_location_display(guild, location_str):
+    """
+    If location contains a channel tag (<#CHANNEL_ID>) or raw channel link,
+    format it cleanly as a clickable jump link. Otherwise return formatted string.
+    """
+    if not location_str:
+        return "TBA"
+        
+    # Check if input is a raw channel mention like <#123456789>
+    match = re.search(r'<#(\d+)>', location_str)
+    if match:
+        channel_id = int(match.group(1))
+        channel = guild.get_channel(channel_id) if guild else None
+        channel_name = f"#{channel.name}" if channel else f"channel-{channel_id}"
+        if guild:
+            return f"[{channel_name}](https://discord.com/channels/{guild.id}/{channel_id})"
+        return f"<#{channel_id}>"
+
+    # Check if input is already a full HTTPS Discord channel URL
+    if "discord.com/channels/" in location_str:
+        # Hide ugly URL inside clean markdown link
+        return f"[🔗 Jump to Channel]({location_str.strip()})"
+        
+    return f"`{location_str}`"
 
 @bot.event
 async def on_ready():
@@ -117,47 +143,46 @@ async def event_reminder_task():
             role_ping = f"<@&{data['role_id']}>" if data.get('role_id') else ""
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
             
-            # 2 Days Before Reminder
             if delta_days == 2:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
+                        loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
                             f"⏳ **[REMINDER: 2 DAYS LEFT]** {role_ping}\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 📍 **Location:** `{data['location']}`\n"
+                            f"> 📍 **Location:** {loc_disp}\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # 1 Day Before Reminder
             elif delta_days == 1:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
+                        loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
                             f"⚠️ **[REMINDER: TOMORROW]** {role_ping}\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 📍 **Location:** `{data['location']}`\n"
+                            f"> 📍 **Location:** {loc_disp}\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # Event Day Reminder (Pings @everyone automatically)
             elif delta_days == 0:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
+                        loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
                             f"🚨 **[EVENT STARTING TODAY!]** @everyone\n"
                             f"> 📌 **{data['title']}** `[{data['category']}]`\n"
                             f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 📍 **Location:** `{data['location']}`\n"
+                            f"> 📍 **Location:** {loc_disp}\n"
                             f"> 🎯 **How to Join:** {data['how_join']}\n"
                             f"> 💬 *{data['desc']}*"
                         )
             
-            # Expired Event Cleanup & Archive count increment
             if parsed_date < today:
                 expired_ids.append(eid)
                 completed_events_count += 1
@@ -175,7 +200,7 @@ async def event_reminder_task():
                 break
 
 # ==============================================================================
-# 4. INTERACTIVE DROPDOWN & BUTTON VIEWS (Option 1 Enhanced)
+# 4. INTERACTIVE DROPDOWN & BUTTON VIEWS
 # ==============================================================================
 class EventSelectDropdown(discord.ui.Select):
     def __init__(self):
@@ -209,9 +234,10 @@ class EventSelectDropdown(discord.ui.Select):
             await interaction.response.send_message(f"⚠️ You are already registered for **{event['title']}** (ID: {eid})!", ephemeral=True)
         else:
             user_registrations[uid].add(eid)
+            loc_disp = format_location_display(interaction.guild, event.get('location'))
             await interaction.response.send_message(
                 f"✅ Successfully registered for **{event['title']}** (ID: `{eid}`)!\n"
-                f"📍 **Location:** `{event['location']}`\n"
+                f"📍 **Location:** {loc_disp}\n"
                 f"🎯 **How to Join:** {event['how_join']}\n"
                 f"See you there!", 
                 ephemeral=True
@@ -220,10 +246,7 @@ class EventSelectDropdown(discord.ui.Select):
 class CalendarControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # Add Dropdown first
         self.add_item(EventSelectDropdown())
-        
-        # Add buttons using proper UI Button class with row specification
         self.add_item(discord.ui.Button(
             label="📋 My Registered Events", 
             style=discord.ButtonStyle.secondary, 
@@ -238,7 +261,6 @@ class CalendarControlView(discord.ui.View):
         ))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Handle custom button callback for 'My Registered Events'
         if interaction.data.get("custom_id") == "my_events_btn":
             uid = interaction.user.id
             registered_ids = user_registrations.get(uid, set())
@@ -251,7 +273,8 @@ class CalendarControlView(discord.ui.View):
             lines = ["**Your Registered Events:**"]
             for eid in active_regs:
                 ev = events_records[eid]
-                lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: `{ev['location']}`")
+                loc_disp = format_location_display(interaction.guild, ev.get('location'))
+                lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: {loc_disp}")
 
             await interaction.response.send_message("\n".join(lines), ephemeral=True)
             return False
@@ -283,10 +306,15 @@ async def update_calendar_board(guild):
         "```"
     )
     
+    embed.description = notice_text
+    
     if not events_records:
-        embed.description = f"{notice_text}\n✨ **No upcoming special events scheduled right now. Stay tuned!**"
+        embed.add_field(
+            name="✨ UPCOMING EVENTS", 
+            value="*No upcoming special events scheduled right now. Stay tuned!*", 
+            inline=False
+        )
     else:
-        events_lines = [notice_text, ""]
         sorted_events = sorted(
             events_records.items(), 
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
@@ -296,15 +324,15 @@ async def update_calendar_board(guild):
             ev_date = parse_date_str(data["date"])
             
             if ev_date == today:
-                status_badge = "🔴 **[LIVE NOW / TODAY]**"
+                status_badge = "🔴 [LIVE NOW / TODAY]"
             elif ev_date and ev_date > today:
-                status_badge = "⏳ **[UPCOMING]**"
+                status_badge = "⏳ [UPCOMING]"
             else:
-                status_badge = "📌"
+                status_badge = "📌 [SCHEDULED]"
 
             category = data.get('category', 'EVENT')
-            role_display = f"<@&{data['role_id']}>" if data.get('role_id') else "None"
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
+            loc_display = format_location_display(guild, data.get('location'))
             
             try:
                 dt_obj = datetime.combine(ev_date, datetime.min.time())
@@ -313,17 +341,22 @@ async def update_calendar_board(guild):
             except Exception:
                 time_display = f"{data['date']} at `{data['time']}`"
 
-            events_lines.append(f"{status_badge} **{data['title']}** `[{category}]` *(ID: `{eid}`)*")
-            events_lines.append(f"> 🕒 Time: {time_display}")
-            events_lines.append(f"> 👤 **Host:** {host_display}  |  📍 **Location:** `{data['location']}`")
-            events_lines.append(f"> 🎯 **How to Join:** {data['how_join']}")
-            if data['desc']:
-                events_lines.append(f"> 💬 *{data['desc']}*")
-            events_lines.append("────────────────────────────────────────")
+            field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
-        events_lines.append(f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`")
-        
-        embed.description = "\n".join(events_lines)
+            field_value = (
+                f"⏰ **Time:** {time_display}\n"
+                f"👤 **Host:** {host_display}   |   📍 **Location:** {loc_display}\n"
+                f"🎯 **How to Join:** {data['how_join']}\n"
+                f"💬 **Details:** *{data['desc']}*"
+            )
+            
+            embed.add_field(name=field_name, value=field_value, inline=False)
+
+    embed.add_field(
+        name="──────────", 
+        value=f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`", 
+        inline=False
+    )
 
     embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
 
@@ -343,7 +376,7 @@ async def update_calendar_board(guild):
 # ==============================================================================
 # 6. SECURED SLASH COMMANDS
 # ==============================================================================
-@bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event with location & join info")
+@bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
     interaction: discord.Interaction, 
     date: str, 
@@ -375,7 +408,7 @@ async def add_event(
         "desc": description
     }
 
-    await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}` (Host: {host_admin.display_name})", ephemeral=True)
+    await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
     await update_calendar_board(interaction.guild)
 
 @bot.tree.command(name="delete_event", description="[Admin/Floater] Purge an existing event from the master calendar")
