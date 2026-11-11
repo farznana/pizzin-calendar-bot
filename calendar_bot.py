@@ -379,7 +379,7 @@ async def add_event(
     location: str,
     how_to_join: str,
     ping_role: discord.Role = None, 
-    category: str, 
+    category: str = "COMMUNITY", 
     description: str = "Official details will be announced shortly."
 ):
     await interaction.response.defer(ephemeral=True)
