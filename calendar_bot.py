@@ -293,7 +293,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Super Clean Short Inline List)
+# 5. CALENDAR BOARD RENDERER (1-Row with Full Year & Short Status)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -353,17 +353,18 @@ async def update_calendar_board(guild):
                 if ev_date:
                     delta = (ev_date - today).days
                     if delta == 0:
-                        countdown_str = "[TODAY!]"
+                        countdown_str = "[TODAY]"
                     elif delta == 1:
                         countdown_str = "[Tomorrow]"
                     elif delta > 1:
-                        countdown_str = f"[In {delta} days]"
+                        countdown_str = f"[{delta}d]"
                     else:
-                        countdown_str = "[Concluded]"
+                        countdown_str = "[Done]"
                 else:
-                    countdown_str = "[Upcoming]"
+                    countdown_str = "[Soon]"
 
-                event_line = f"[{eid}] {data['date']} | {data['time']} • {data['title']} {countdown_str}"
+                # Kekalkan tarikh lengkap bersama tahun (cth: 16 Nov 2026) dalam satu baris padat
+                event_line = f"[{eid}] {data['date']} • {data['title']} {countdown_str}"
                 field_box_content.append(event_line)
 
             field_name = f"📅  {month_name}"
