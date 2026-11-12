@@ -175,7 +175,6 @@ async def event_reminder_task():
                         )
             
             elif delta_days == 0:
-                # BILA HARI EVENT TIBA: Bot hantar Full Details Card dengan ping @everyone!
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
@@ -289,12 +288,12 @@ class CalendarControlView(discord.ui.View):
                 loc_disp = format_location_display(interaction.guild, ev.get('location'))
                 lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: {loc_disp}")
 
-            await interaction.followup.send("\n".join(lines), ephemeral=True)
+            await interaction.response.send_message("\n".join(lines), ephemeral=True)
             return False
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Super Short & Simple Inline List)
+# 5. CALENDAR BOARD RENDERER (Super Clean Short Inline List)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -364,9 +363,6 @@ async def update_calendar_board(guild):
                 else:
                     countdown_str = "[Upcoming]"
 
-                category = data.get('category', 'GIVEAWAY')
-                
-                # Format ringkas super pendek sebaris macam contoh gambar
                 event_line = f"[{eid}] {data['date']} | {data['time']} • {data['title']} {countdown_str}"
                 field_box_content.append(event_line)
 
@@ -445,7 +441,7 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         await interaction.followup.send("❌ **Error:** The specified Event ID does not exist.", ephemeral=True)
         return
         
-        deleted = events_records.pop(event_id)
+    deleted = events_records.pop(event_id)
     for uid in user_registrations:
         user_registrations[uid].discard(event_id)
 
