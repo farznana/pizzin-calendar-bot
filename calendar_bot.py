@@ -28,7 +28,7 @@ def run_web_server():
 threading.Thread(target=run_web_server, daemon=True).start()
 
 # ==============================================================================
-# 2. DISCORD BOT SETUP & CONFIGURATION (100% Slash Commands - No Prefix)
+# 2. DISCORD BOT SETUP & CONFIGURATION
 # ==============================================================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -118,7 +118,7 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CLEANUP (2 Days Buffer)
+# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CLEANUP
 # ==============================================================================
 @tasks.loop(hours=24)
 async def event_reminder_task():
@@ -274,7 +274,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER
+# 5. CALENDAR BOARD RENDERER (With Live Countdown Tag)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -313,9 +313,22 @@ async def update_calendar_board(guild):
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        for eid, data in sorted_events:
+        for i, (eid, data) in enumerate(sorted_events):
             ev_date = parse_date_str(data["date"])
             
+            if ev_date:
+                delta = (ev_date - today).days
+                if delta == 0:
+                    countdown_str = "🔥 **(TODAY!)**"
+                elif delta == 1:
+                    countdown_str = "⏳ **(Tomorrow)**"
+                elif delta > 1:
+                    countdown_str = f"⏳ **(In {delta} days)**"
+                else:
+                    countdown_str = "📌 **(Concluded)**"
+            else:
+                countdown_str = ""
+
             if ev_date == today:
                 status_badge = "🔴 [LIVE NOW / TODAY]"
             elif ev_date and ev_date > today:
@@ -330,11 +343,12 @@ async def update_calendar_board(guild):
             try:
                 dt_obj = datetime.combine(ev_date, datetime.min.time())
                 timestamp_val = int(dt_obj.timestamp())
-                time_display = f"<t:{timestamp_val}:D> ({data['time']})"
+                time_display = f"<t:{timestamp_val}:D> ({data['time']}) {countdown_str}"
             except Exception:
                 time_display = f"{data['date']} (`{data['time']}`)"
 
-            field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
+            prefix_space = "\n\n" if i > 0 else ""
+            field_name = f"{prefix_space}{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
             field_value = (
                 f"⏰ **Time:** {time_display}\n"
@@ -345,11 +359,8 @@ async def update_calendar_board(guild):
             
             embed.add_field(name=field_name, value=field_value, inline=False)
 
-    embed.add_field(
-        name="──────────", 
-        value=f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`", 
-        inline=False
-    )
+    archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
+    embed.add_field(name="📋 ARCHIVE STATUS", value=archive_text, inline=False)
 
     embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
 
