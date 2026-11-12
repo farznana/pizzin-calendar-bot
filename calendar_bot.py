@@ -286,7 +286,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Grouped by Month)
+# 5. CALENDAR BOARD RENDERER (Status on Top Line)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -320,18 +320,17 @@ async def update_calendar_board(guild):
             inline=False
         )
     else:
-        # Susun event mengikut tarikh terawal ke lewat
         sorted_events = sorted(
             events_records.items(), 
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        # Kumpul mengikut Bulan & Tahun (Contoh: "NOVEMBER 2026", "DECEMBER 2026")
+        # Group by Month & Year
         grouped_by_month = {}
         for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
             if ev_date:
-                month_year_str = ev_date.strftime("%B %Y").upper() # Cth: NOVEMBER 2026
+                month_year_str = ev_date.strftime("%B %Y").upper()
             else:
                 month_year_str = "OTHER EVENTS"
                 
@@ -339,7 +338,6 @@ async def update_calendar_board(guild):
                 grouped_by_month[month_year_str] = []
             grouped_by_month[month_year_str].append((eid, data))
 
-        # Masukkan ke dalam Embed Field mengikut kumpulan bulan
         for month_name, ev_list in grouped_by_month.items():
             field_box_content = []
             
@@ -349,32 +347,34 @@ async def update_calendar_board(guild):
                 if ev_date:
                     delta = (ev_date - today).days
                     if delta == 0:
-                        countdown_str = "(TODAY!)"
+                        countdown_label = "UPCOMING [TODAY!]"
                     elif delta == 1:
-                        countdown_str = "(Tomorrow)"
+                        countdown_label = "UPCOMING [Tomorrow]"
                     elif delta > 1:
-                        countdown_str = f"(In {delta} days)"
+                        countdown_label = f"UPCOMING [In {delta} days]"
                     else:
-                        countdown_str = "(Concluded)"
+                        countdown_label = "CONCLUDED"
                 else:
-                    countdown_str = ""
+                    countdown_label = "UPCOMING"
 
                 if ev_date == today:
-                    status_badge = "🔴 LIVE"
+                    status_badge = "LIVE NOW"
                 elif ev_date and ev_date > today:
-                    status_badge = "⏳ UPCOMING"
+                    status_badge = countdown_label
                 else:
-                    status_badge = "📌 CONCLUDED"
+                    status_badge = "CONCLUDED"
 
                 category = data.get('category', 'EVENT')
                 loc_clean = get_clean_location_name(guild, data.get('location'))
                 clean_how = data.get('how_join', 'TBA')
                 clean_desc = data.get('desc', 'TBA')
 
-                # Bentuk blok kotak tersusun rapi untuk setiap event dalam bulan tersebut
+                # Status diletakkan di baris paling atas bersendirian
                 event_block = (
-                    f"[{eid}] {data['title']} [{category}] - {status_badge}\n"
-                    f"  Time     : {data['date']} | {data['time']} {countdown_str}\n"
+                    f"[{eid}] {data['title']} [{category}]\n"
+                    f"  STATUS   : {status_badge}\n"
+                    f"  Date     : {data['date']}\n"
+                    f"  Time     : {data['time']}\n"
                     f"  Location : {loc_clean}\n"
                     f"  Join     : {clean_how}\n"
                     f"  Details  : {clean_desc}\n"
@@ -382,7 +382,6 @@ async def update_calendar_board(guild):
                 )
                 field_box_content.append(event_block)
 
-            # Cantumkan semua event dalam bulan tu ke dalam satu kotak code block yang besar
             field_name = f"📅  {month_name}"
             field_value = "```yaml\n" + "\n".join(field_box_content) + "\n```"
             embed.add_field(name=field_name, value=field_value, inline=False)
