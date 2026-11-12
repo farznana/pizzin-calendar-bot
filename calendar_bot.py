@@ -221,13 +221,14 @@ class EventSelectDropdown(discord.ui.Select):
         super().__init__(placeholder="🔽 Select a specific event to join...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         if self.values[0] == "none":
-            await interaction.response.send_message("❌ There are no active events to join right now.", ephemeral=True)
+            await interaction.followup.send("❌ There are no active events to join right now.", ephemeral=True)
             return
 
         eid = int(self.values[0])
         if eid not in events_records:
-            await interaction.response.send_message("❌ This event no longer exists or has already concluded.", ephemeral=True)
+            await interaction.followup.send("❌ This event no longer exists or has already concluded.", ephemeral=True)
             return
 
         event = events_records[eid]
@@ -236,11 +237,11 @@ class EventSelectDropdown(discord.ui.Select):
             user_registrations[uid] = set()
 
         if eid in user_registrations[uid]:
-            await interaction.response.send_message(f"⚠️ You are already registered for **{event['title']}** (ID: {eid})!", ephemeral=True)
+            await interaction.followup.send(f"⚠️ You are already registered for **{event['title']}** (ID: {eid})!", ephemeral=True)
         else:
             user_registrations[uid].add(eid)
             loc_disp = format_location_display(interaction.guild, event.get('location'))
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Successfully registered for **{event['title']}** (ID: `{eid}`)!\n"
                 f"📍 **Location:** {loc_disp}\n"
                 f"🎯 **How to Join:** {event['how_join']}\n"
@@ -267,12 +268,13 @@ class CalendarControlView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.data.get("custom_id") == "my_events_btn":
+            await interaction.response.defer(ephemeral=True)
             uid = interaction.user.id
             registered_ids = user_registrations.get(uid, set())
             active_regs = [eid for eid in registered_ids if eid in events_records]
 
             if not active_regs:
-                await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+                await interaction.followup.send("📌 You are not currently registered for any upcoming events.", ephemeral=True)
                 return False
 
             lines = ["**Your Registered Events:**"]
@@ -281,7 +283,7 @@ class CalendarControlView(discord.ui.View):
                 loc_disp = format_location_display(interaction.guild, ev.get('location'))
                 lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: {loc_disp}")
 
-            await interaction.response.send_message("\n".join(lines), ephemeral=True)
+            await interaction.followup.send("\n".join(lines), ephemeral=True)
             return False
         return True
 
@@ -403,7 +405,7 @@ async def update_calendar_board(guild):
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 6. SECURED SLASH COMMANDS (Instant Defer + Error Proof)
+# 6. SECURED SLASH COMMANDS (Instant Defer Protection)
 # ==============================================================================
 @bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
