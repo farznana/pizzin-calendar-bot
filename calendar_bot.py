@@ -403,7 +403,7 @@ async def update_calendar_board(guild):
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 6. SECURED SLASH COMMANDS
+# 6. SECURED SLASH COMMANDS (Instant Defer + Error Proof)
 # ==============================================================================
 @bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
@@ -418,12 +418,10 @@ async def add_event(
     category: str = "COMMUNITY", 
     description: str = "Official details will be announced shortly."
 ):
-    # Pastikan defer dipanggil pantas untuk elak timeout
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
     
     if interaction.user.id not in ALLOWED_ADMINS:
-        await interaction.followup.send("❌ **Access Denied:** You do not have the required administrative clearance to modify the calendar.", ephemeral=True)
+        await interaction.followup.send("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
         return
 
     eid = get_next_event_id()
@@ -443,39 +441,43 @@ async def add_event(
         await update_calendar_board(interaction.guild)
         await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f"⚠️ Event saved locally, but failed to update board: `{e}`", ephemeral=True)
+        await interaction.followup.send(f"⚠️ Saved, but board update failed: `{e}`", ephemeral=True)
 
 @bot.tree.command(name="delete_event", description="[Admin/Floater] Purge an existing event from the master calendar")
 async def delete_event(interaction: discord.Interaction, event_id: int):
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
     
     if interaction.user.id not in ALLOWED_ADMINS:
-        await interaction.followup.send("❌ **Access Denied:** You do not have the required administrative clearance to purge calendar entries.", ephemeral=True)
+        await interaction.followup.send("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
         return
         
     if event_id not in events_records:
-        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist in the records.", ephemeral=True)
+        await interaction.followup.send("❌ **Error:** The specified Event ID does not exist.", ephemeral=True)
         return
         
     deleted = events_records.pop(event_id)
     for uid in user_registrations:
         user_registrations[uid].discard(event_id)
 
-    await update_calendar_board(interaction.guild)
-    await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*) from the calendar.", ephemeral=True)
+    try:
+        await update_calendar_board(interaction.guild)
+        await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*)", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Deleted, but board update failed: `{e}`", ephemeral=True)
 
 @bot.tree.command(name="setup_calendar", description="[Admin/Floater] Initialize or refresh the master calendar board")
 async def setup_calendar(interaction: discord.Interaction):
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
-        
+    await interaction.response.defer(ephemeral=True)
+    
     if interaction.user.id not in ALLOWED_ADMINS:
         await interaction.followup.send("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
         return
         
-    await update_calendar_board(interaction.guild)
-    await interaction.followup.send("✅ Calendar board initialized successfully!", ephemeral=True)
+    try:
+        await update_calendar_board(interaction.guild)
+        await interaction.followup.send("✅ Calendar board initialized successfully!", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Failed to initialize board: `{e}`", ephemeral=True)
 
 # ==============================================================================
 # 7. RUN BOT
