@@ -130,7 +130,7 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CLEANUP
+# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CARD ON EVENT DAY
 # ==============================================================================
 @tasks.loop(hours=24)
 async def event_reminder_task():
@@ -175,17 +175,23 @@ async def event_reminder_task():
                         )
             
             elif delta_days == 0:
+                # BILA HARI EVENT TIBA: Bot hantar Detail Card rasmi dengan ping @everyone!
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
                         loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
-                            f"🚨 **[EVENT STARTING TODAY!]** @everyone\n"
-                            f"> 📌 **{data['title']}** `[{data['category']}]`\n"
-                            f"> 👤 **Event Host:** {host_display}\n"
-                            f"> 📍 **Location:** {loc_disp}\n"
-                            f"> 🎯 **How to Join:** {data['how_join']}\n"
-                            f"> 💬 *{data['desc']}*"
+                            f"🚨 **[EVENT HARI INI! / LIVE TODAY!]** @everyone {role_ping}\n"
+                            f"```yaml\n"
+                            f"EVENT    : {data['title']} [{data['category']}]\n"
+                            f"TIME     : {data['date']} | {data['time']}\n"
+                            f"LOCATION : {get_clean_location_name(guild, data.get('location'))}\n"
+                            f"JOIN     : {data['how_join']}\n"
+                            f"DETAILS  : {data['desc']}\n"
+                            f"```\n"
+                            f"📍 **Direct Link:** {loc_disp}\n"
+                            f"🎯 **How to Join:** {data['how_join']}\n"
+                            f"Jumpa semua di sana! 🎉"
                         )
             
             if parsed_date < (today - timedelta(days=2)):
@@ -288,7 +294,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Safe Limit Protection)
+# 5. CLEAN CALENDAR BOARD RENDERER (Teaser / Clean Minimalist View)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -367,27 +373,19 @@ async def update_calendar_board(guild):
 
                 category = data.get('category', 'EVENT')
                 loc_clean = get_clean_location_name(guild, data.get('location'))
-                clean_how = data.get('how_join', 'TBA')
-                clean_desc = data.get('desc', 'TBA')
 
+                # Paparan ringkas & clean tanpa details panjang kat papan utama
                 event_block = (
                     f"[{eid}] {data['title']} [{category}]\n"
                     f"  STATUS   : {status_badge}\n"
-                    f"  Date     : {data['date']}\n"
-                    f"  Time     : {data['time']}\n"
+                    f"  Date     : {data['date']} | {data['time']}\n"
                     f"  Location : {loc_clean}\n"
-                    f"  Join     : {clean_how}\n"
-                    f"  Details  : {clean_desc}\n"
                     f"----------------------------------------"
                 )
                 field_box_content.append(event_block)
 
             field_name = f"📅  {month_name}"
-            # Pastikan teks gabungan tidak melepasi had 1024 aksara Discord Embed Field
             field_value = "```yaml\n" + "\n".join(field_box_content) + "\n```"
-            if len(field_value) > 1020:
-                field_value = field_value[:1000] + "\n# ... (more events truncated) ...\n```"
-                
             embed.add_field(name=field_name, value=field_value, inline=False)
 
     archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
