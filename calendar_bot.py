@@ -274,7 +274,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Boxed Code Block Design)
+# 5. CALENDAR BOARD RENDERER
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -343,13 +343,6 @@ async def update_calendar_board(guild):
             clean_how = data.get('how_join', 'TBA')
             clean_desc = data.get('desc', 'TBA')
 
-            try:
-                dt_obj = datetime.combine(ev_date, datetime.min.time())
-                timestamp_val = int(dt_obj.timestamp())
-                time_display = f"<t:{timestamp_val}:D> ({data['time']}) {countdown_str}"
-            except Exception:
-                time_display = f"{data['date']} ({data['time']}) {countdown_str}"
-
             field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
             field_value = (
@@ -382,7 +375,7 @@ async def update_calendar_board(guild):
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 6. SECURED SLASH COMMANDS
+# 6. SECURED SLASH COMMANDS (Optimized Timeout Protection)
 # ==============================================================================
 @bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
@@ -416,8 +409,8 @@ async def add_event(
         "desc": description
     }
 
-    await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
     await update_calendar_board(interaction.guild)
+    await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
 
 @bot.tree.command(name="delete_event", description="[Admin/Floater] Purge an existing event from the master calendar")
 async def delete_event(interaction: discord.Interaction, event_id: int):
@@ -435,8 +428,8 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
     for uid in user_registrations:
         user_registrations[uid].discard(event_id)
 
-    await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*) from the calendar.", ephemeral=True)
     await update_calendar_board(interaction.guild)
+    await interaction.followup.send(f"🗑️ Successfully removed Event ID `{event_id}` (*{deleted['title']}*) from the calendar.", ephemeral=True)
 
 @bot.tree.command(name="setup_calendar", description="[Admin/Floater] Initialize or refresh the master calendar board")
 async def setup_calendar(interaction: discord.Interaction):
