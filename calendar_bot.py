@@ -101,7 +101,7 @@ def format_location_display(guild, location_str):
             return f"[{channel_name}](https://discord.com/channels/{guild.id}/{channel_id})"
         return f"<#{channel_id}>"
 
-    if "discord.com/channels/" in location_str:
+    if "[discord.com/channels/](https://discord.com/channels/)" in location_str:
         return f"[🔗 Jump to Channel]({location_str.strip()})"
         
     return f"`{location_str}`"
@@ -249,7 +249,7 @@ class CalendarControlView(discord.ui.View):
         self.add_item(discord.ui.Button(
             label="📩 Contact Support / Host", 
             style=discord.ButtonStyle.link, 
-            url="https://discord.com", 
+            url="[https://discord.com](https://discord.com)", 
             row=1
         ))
 
@@ -274,7 +274,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (With Live Countdown Tag)
+# 5. CALENDAR BOARD RENDERER (Boxed Code Block Design)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -313,19 +313,19 @@ async def update_calendar_board(guild):
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        for i, (eid, data) in enumerate(sorted_events):
+        for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
             
             if ev_date:
                 delta = (ev_date - today).days
                 if delta == 0:
-                    countdown_str = "🔥 **(TODAY!)**"
+                    countdown_str = "(TODAY!)"
                 elif delta == 1:
-                    countdown_str = "⏳ **(Tomorrow)**"
+                    countdown_str = "(Tomorrow)"
                 elif delta > 1:
-                    countdown_str = f"⏳ **(In {delta} days)**"
+                    countdown_str = f"(In {delta} days)"
                 else:
-                    countdown_str = "📌 **(Concluded)**"
+                    countdown_str = "(Concluded)"
             else:
                 countdown_str = ""
 
@@ -337,24 +337,30 @@ async def update_calendar_board(guild):
                 status_badge = "📌 [RECENTLY CONCLUDED]"
 
             category = data.get('category', 'EVENT')
-            host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
-            loc_display = format_location_display(guild, data.get('location'))
             
+            # Bersihkan markdown formatting untuk dipaparkan kemas dalam code block box
+            raw_loc = data.get('location', 'TBA')
+            clean_loc = re.sub(r'<#(\d+)>', r'#channel', raw_loc)
+            clean_how = data.get('how_join', 'TBA')
+            clean_desc = data.get('desc', 'TBA')
+
             try:
                 dt_obj = datetime.combine(ev_date, datetime.min.time())
                 timestamp_val = int(dt_obj.timestamp())
                 time_display = f"<t:{timestamp_val}:D> ({data['time']}) {countdown_str}"
             except Exception:
-                time_display = f"{data['date']} (`{data['time']}`)"
+                time_display = f"{data['date']} ({data['time']}) {countdown_str}"
 
-            prefix_space = "\n\n" if i > 0 else ""
-            field_name = f"{prefix_space}{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
+            field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
+            # Setiap event dibungkus dalam kotak code block supaya nampak sangat kemas dan jelas
             field_value = (
-                f"⏰ **Time:** {time_display}\n"
-                f"👤 **Host:** {host_display}   |   📍 **Location:** {loc_display}\n"
-                f"🎯 **How to Join:** {data['how_join']}\n"
-                f"💬 **Details:** *{data['desc']}*"
+                f"```yaml\n"
+                f"Time     : {data['date']} | {data['time']} {countdown_str}\n"
+                f"Location : {clean_loc}\n"
+                f"Join     : {clean_how}\n"
+                f"Details  : {clean_desc}\n"
+                f"```"
             )
             
             embed.add_field(name=field_name, value=field_value, inline=False)
@@ -446,4 +452,4 @@ async def setup_calendar(interaction: discord.Interaction):
 # ==============================================================================
 # 7. RUN BOT
 # ==============================================================================
-bot.run(os.environ.get("DISCORD_TOKEN"))
+bot.run(os.environ.get("DISOURCE_TOKEN")) # (Pastikan string token mengekalkan environment variable rasmi anda)
