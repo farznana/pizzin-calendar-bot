@@ -130,7 +130,7 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. BACKGROUND TASK: COUNTDOWN REMINDERS & AUTO-CARD ON EVENT DAY
+# 3. BACKGROUND TASK: REMINDERS & AUTO FULL-DETAILS CARD ON EVENT DAY
 # ==============================================================================
 @tasks.loop(hours=24)
 async def event_reminder_task():
@@ -175,7 +175,7 @@ async def event_reminder_task():
                         )
             
             elif delta_days == 0:
-                # BILA HARI EVENT TIBA: Bot hantar Detail Card rasmi dengan ping @everyone!
+                # BILA HARI EVENT TIBA: Bot hantar Full Details Card dengan ping @everyone!
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
@@ -280,7 +280,7 @@ class CalendarControlView(discord.ui.View):
             active_regs = [eid for eid in registered_ids if eid in events_records]
 
             if not active_regs:
-                await interaction.followup.send("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+                await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
                 return False
 
             lines = ["**Your Registered Events:**"]
@@ -294,7 +294,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CLEAN CALENDAR BOARD RENDERER (Teaser / Clean Minimalist View)
+# 5. CALENDAR BOARD RENDERER (Super Short & Simple Inline List)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -354,35 +354,21 @@ async def update_calendar_board(guild):
                 if ev_date:
                     delta = (ev_date - today).days
                     if delta == 0:
-                        countdown_label = "UPCOMING [TODAY!]"
+                        countdown_str = "[TODAY!]"
                     elif delta == 1:
-                        countdown_label = "UPCOMING [Tomorrow]"
+                        countdown_str = "[Tomorrow]"
                     elif delta > 1:
-                        countdown_label = f"UPCOMING [In {delta} days]"
+                        countdown_str = f"[In {delta} days]"
                     else:
-                        countdown_label = "CONCLUDED"
+                        countdown_str = "[Concluded]"
                 else:
-                    countdown_label = "UPCOMING"
+                    countdown_str = "[Upcoming]"
 
-                if ev_date == today:
-                    status_badge = "LIVE NOW"
-                elif ev_date and ev_date > today:
-                    status_badge = countdown_label
-                else:
-                    status_badge = "CONCLUDED"
-
-                category = data.get('category', 'EVENT')
-                loc_clean = get_clean_location_name(guild, data.get('location'))
-
-                # Paparan ringkas & clean tanpa details panjang kat papan utama
-                event_block = (
-                    f"[{eid}] {data['title']} [{category}]\n"
-                    f"  STATUS   : {status_badge}\n"
-                    f"  Date     : {data['date']} | {data['time']}\n"
-                    f"  Location : {loc_clean}\n"
-                    f"----------------------------------------"
-                )
-                field_box_content.append(event_block)
+                category = data.get('category', 'GIVEAWAY')
+                
+                # Format ringkas super pendek sebaris macam contoh gambar
+                event_line = f"[{eid}] {data['date']} | {data['time']} • {data['title']} {countdown_str}"
+                field_box_content.append(event_line)
 
             field_name = f"📅  {month_name}"
             field_value = "```yaml\n" + "\n".join(field_box_content) + "\n```"
@@ -459,7 +445,7 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
         await interaction.followup.send("❌ **Error:** The specified Event ID does not exist.", ephemeral=True)
         return
         
-    deleted = events_records.pop(event_id)
+        deleted = events_records.pop(event_id)
     for uid in user_registrations:
         user_registrations[uid].discard(event_id)
 
