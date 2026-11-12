@@ -288,7 +288,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER
+# 5. CALENDAR BOARD RENDERER (Safe Limit Protection)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -383,7 +383,11 @@ async def update_calendar_board(guild):
                 field_box_content.append(event_block)
 
             field_name = f"📅  {month_name}"
+            # Pastikan teks gabungan tidak melepasi had 1024 aksara Discord Embed Field
             field_value = "```yaml\n" + "\n".join(field_box_content) + "\n```"
+            if len(field_value) > 1020:
+                field_value = field_value[:1000] + "\n# ... (more events truncated) ...\n```"
+                
             embed.add_field(name=field_name, value=field_value, inline=False)
 
     archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
@@ -405,7 +409,7 @@ async def update_calendar_board(guild):
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 6. SECURED SLASH COMMANDS (Instant Defer Protection)
+# 6. SECURED SLASH COMMANDS
 # ==============================================================================
 @bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
