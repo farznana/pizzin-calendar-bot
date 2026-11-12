@@ -286,7 +286,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Status on Top Line)
+# 5. CALENDAR BOARD RENDERER
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -325,7 +325,6 @@ async def update_calendar_board(guild):
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        # Group by Month & Year
         grouped_by_month = {}
         for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
@@ -369,7 +368,6 @@ async def update_calendar_board(guild):
                 clean_how = data.get('how_join', 'TBA')
                 clean_desc = data.get('desc', 'TBA')
 
-                # Status diletakkan di baris paling atas bersendirian
                 event_block = (
                     f"[{eid}] {data['title']} [{category}]\n"
                     f"  STATUS   : {status_badge}\n"
@@ -420,7 +418,9 @@ async def add_event(
     category: str = "COMMUNITY", 
     description: str = "Official details will be announced shortly."
 ):
-    await interaction.response.defer(ephemeral=True)
+    # Pastikan defer dipanggil pantas untuk elak timeout
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
     
     if interaction.user.id not in ALLOWED_ADMINS:
         await interaction.followup.send("❌ **Access Denied:** You do not have the required administrative clearance to modify the calendar.", ephemeral=True)
@@ -439,12 +439,16 @@ async def add_event(
         "desc": description
     }
 
-    await update_calendar_board(interaction.guild)
-    await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
+    try:
+        await update_calendar_board(interaction.guild)
+        await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Event saved locally, but failed to update board: `{e}`", ephemeral=True)
 
 @bot.tree.command(name="delete_event", description="[Admin/Floater] Purge an existing event from the master calendar")
 async def delete_event(interaction: discord.Interaction, event_id: int):
-    await interaction.response.defer(ephemeral=True)
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
     
     if interaction.user.id not in ALLOWED_ADMINS:
         await interaction.followup.send("❌ **Access Denied:** You do not have the required administrative clearance to purge calendar entries.", ephemeral=True)
@@ -463,10 +467,13 @@ async def delete_event(interaction: discord.Interaction, event_id: int):
 
 @bot.tree.command(name="setup_calendar", description="[Admin/Floater] Initialize or refresh the master calendar board")
 async def setup_calendar(interaction: discord.Interaction):
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+        
     if interaction.user.id not in ALLOWED_ADMINS:
-        await interaction.response.send_message("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
+        await interaction.followup.send("❌ **Access Denied:** You do not have administrative clearance.", ephemeral=True)
         return
-    await interaction.response.defer(ephemeral=True)
+        
     await update_calendar_board(interaction.guild)
     await interaction.followup.send("✅ Calendar board initialized successfully!", ephemeral=True)
 
