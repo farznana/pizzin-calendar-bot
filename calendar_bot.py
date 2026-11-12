@@ -88,6 +88,18 @@ def get_next_event_id():
         candidate += 1
     return candidate
 
+def get_clean_location_name(guild, location_str):
+    if not location_str:
+        return "TBA"
+    match = re.search(r'<#(\d+)>', location_str)
+    if match:
+        channel_id = int(match.group(1))
+        channel = guild.get_channel(channel_id) if guild else None
+        return f"#{channel.name}" if channel else "#channel"
+    if "discord.com/channels/" in location_str:
+        return "Discord Channel"
+    return location_str.strip()
+
 def format_location_display(guild, location_str):
     if not location_str:
         return "TBA"
@@ -274,7 +286,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER
+# 5. CALENDAR BOARD RENDERER (Perfect Aligned Box)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -338,17 +350,17 @@ async def update_calendar_board(guild):
 
             category = data.get('category', 'EVENT')
             
-            raw_loc = data.get('location', 'TBA')
-            clean_loc = re.sub(r'<#(\d+)>', r'#channel', raw_loc)
+            loc_clean = get_clean_location_name(guild, data.get('location'))
             clean_how = data.get('how_join', 'TBA')
             clean_desc = data.get('desc', 'TBA')
 
             field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
+            # Semua maklumat disusun rapi selari (row-by-row) dalam satu kotak code block yang kemas!
             field_value = (
                 f"```yaml\n"
                 f"Time     : {data['date']} | {data['time']} {countdown_str}\n"
-                f"Location : {clean_loc}\n"
+                f"Location : {loc_clean}\n"
                 f"Join     : {clean_how}\n"
                 f"Details  : {clean_desc}\n"
                 f"```"
@@ -375,7 +387,7 @@ async def update_calendar_board(guild):
     calendar_message_id = msg.id
 
 # ==============================================================================
-# 6. SECURED SLASH COMMANDS (Optimized Timeout Protection)
+# 6. SECURED SLASH COMMANDS
 # ==============================================================================
 @bot.tree.command(name="add_event", description="[Admin/Floater] Register a new community event")
 async def add_event(
@@ -383,7 +395,7 @@ async def add_event(
     date: str, 
     time_slot: str, 
     title: str, 
-    host_admin: discord.Member, 
+    host_data: discord.Member, 
     location: str,
     how_to_join: str,
     ping_role: discord.Role = None, 
@@ -401,7 +413,7 @@ async def add_event(
         "date": date.upper(),
         "time": time_slot.upper(),
         "title": title,
-        "host_id": host_admin.id,
+        "host_id": host_data.id,
         "location": location,
         "how_join": how_to_join,
         "role_id": ping_role.id if ping_role else None,
