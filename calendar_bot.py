@@ -101,7 +101,7 @@ def format_location_display(guild, location_str):
             return f"[{channel_name}](https://discord.com/channels/{guild.id}/{channel_id})"
         return f"<#{channel_id}>"
 
-    if "[discord.com/channels/](https://discord.com/channels/)" in location_str:
+    if "discord.com/channels/" in location_str:
         return f"[🔗 Jump to Channel]({location_str.strip()})"
         
     return f"`{location_str}`"
@@ -249,7 +249,7 @@ class CalendarControlView(discord.ui.View):
         self.add_item(discord.ui.Button(
             label="📩 Contact Support / Host", 
             style=discord.ButtonStyle.link, 
-            url="[https://discord.com](https://discord.com)", 
+            url="https://discord.com", 
             row=1
         ))
 
@@ -338,7 +338,6 @@ async def update_calendar_board(guild):
 
             category = data.get('category', 'EVENT')
             
-            # Bersihkan markdown formatting untuk dipaparkan kemas dalam code block box
             raw_loc = data.get('location', 'TBA')
             clean_loc = re.sub(r'<#(\d+)>', r'#channel', raw_loc)
             clean_how = data.get('how_join', 'TBA')
@@ -353,7 +352,6 @@ async def update_calendar_board(guild):
 
             field_name = f"{status_badge}  {data['title']}  [{category}]  (ID: {eid})"
             
-            # Setiap event dibungkus dalam kotak code block supaya nampak sangat kemas dan jelas
             field_value = (
                 f"```yaml\n"
                 f"Time     : {data['date']} | {data['time']} {countdown_str}\n"
@@ -452,4 +450,4 @@ async def setup_calendar(interaction: discord.Interaction):
 # ==============================================================================
 # 7. RUN BOT
 # ==============================================================================
-bot.run(os.environ.get("DISOURCE_TOKEN")) # (Pastikan string token mengekalkan environment variable rasmi anda)
+bot.run(os.environ.get("DISCORD_TOKEN"))
