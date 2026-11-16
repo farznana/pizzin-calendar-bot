@@ -14,7 +14,7 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(b"Pizzin Calendar Bot is online and running 24/7!")
+        self.wfile.write(b"PIZZIN Calendar Bot is online and running 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -293,7 +293,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (1 Field per Event - PIZZIN Clean Layout)
+# 5. CALENDAR BOARD RENDERER (Single Master List - 0% Risk of Character Limit)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -310,32 +310,37 @@ async def update_calendar_board(guild):
         color=embed_color
     )
     
-    notice_text = (
-        "```yaml\n"
-        "📌 CLUB OPERATIONS:\n"
-        "• Every Sunday: Club Closed / Rest Day (Sunday Off)\n"
-        "```"
-    )
-    
-    embed.description = notice_text
+    # Susun semua event dalam satu senarai tunggal yang dikumpulkan mengikut bulan secara kemas
+    lines = [
+        "```yaml",
+        "📌 CLUB OPERATIONS:",
+        "• Every Sunday: Club Closed / Rest Day (Sunday Off)",
+        "--------------------------------------------------",
+        "📅 MASTER EVENT LISTINGS:"
+    ]
     
     if not events_records:
-        embed.add_field(
-            name="✨ UPCOMING EVENTS", 
-            value="*No upcoming special events scheduled right now. Stay tuned!*", 
-            inline=False
-        )
+        lines.append("• No upcoming special events scheduled right now.")
     else:
         sorted_events = sorted(
             events_records.items(), 
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
+        current_month_label = ""
         for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
-            
             if ev_date:
-                month_year_str = ev_date.strftime("%B %Y").upper()
+                month_str = ev_date.strftime("%B %Y").upper()
+            else:
+                month_str = "OTHER EVENTS"
+                
+            # Paparkan tajuk bulan sebagai pemisah sekiranya bertukar bulan
+            if month_str != current_month_label:
+                current_month_label = month_str
+                lines.append(f"\n[{current_month_label}]")
+                
+            if ev_date:
                 delta = (ev_date - today).days
                 if delta == 0:
                     countdown_str = "[TODAY]"
@@ -346,17 +351,15 @@ async def update_calendar_board(guild):
                 else:
                     countdown_str = "[Done]"
             else:
-                month_year_str = "OTHER EVENTS"
                 countdown_str = "[Soon]"
 
-            field_name = f"📅  {month_year_str}  •  ID: [{eid}]"
-            field_value = (
-                f"```yaml\n"
-                f"{data['date']} • {data['title']} {countdown_str}\n"
-                f"```"
-            )
-            embed.add_field(name=field_name, value=field_value, inline=False)
-
+            lines.append(f"• [{eid}] {data['date']} • {data['title']} {countdown_str}")
+            
+    lines.append("```")
+    
+    # Masukkan kesemua paparan dalam description utama (hanya 1 field sahaja digunakan untuk archive)
+    embed.description = "\n".join(lines)
+    
     archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
     embed.add_field(name="📋 ARCHIVE STATUS", value=archive_text, inline=False)
 
