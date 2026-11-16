@@ -120,7 +120,7 @@ def format_location_display(guild, location_str):
 
 @bot.event
 async def on_ready():
-    print(f"Pizzin Calendar Bot connected as {bot.user}")
+    print(f"PIZZIN Calendar Bot connected as {bot.user}")
     if not event_reminder_task.is_running():
         event_reminder_task.start()
     try:
@@ -288,12 +288,12 @@ class CalendarControlView(discord.ui.View):
                 loc_disp = format_location_display(interaction.guild, ev.get('location'))
                 lines.append(f"• **{ev['title']}** (`{ev['date']} at {ev['time']}`) - Location: {loc_disp}")
 
-            await interaction.response.send_message("\n".join(lines), ephemeral=True)
+            await interaction.followup.send("\n".join(lines), ephemeral=True)
             return False
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (1-Row with Full Year & Short Status)
+# 5. CALENDAR BOARD RENDERER (1 Field per Event - PIZZIN Clean Layout)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -306,14 +306,13 @@ async def update_calendar_board(guild):
     embed_color = discord.Color.from_rgb(239, 83, 80) if has_live_event else discord.Color.from_rgb(255, 193, 7)
 
     embed = discord.Embed(
-        title="🗓️  P.I.Z.Z.I.N  •  EVENT CALENDAR", 
+        title="🗓️  PIZZIN  •  EVENT CALENDAR", 
         color=embed_color
     )
     
     notice_text = (
         "```yaml\n"
-        "📌 REGULAR CLUB OPERATIONS:\n"
-        "• Monday – Saturday: Active Community Hours & Gaming Sessions\n"
+        "📌 CLUB OPERATIONS:\n"
         "• Every Sunday: Club Closed / Rest Day (Sunday Off)\n"
         "```"
     )
@@ -332,49 +331,36 @@ async def update_calendar_board(guild):
             key=lambda x: parse_date_str(x[1]["date"]) or date.max
         )
         
-        grouped_by_month = {}
         for eid, data in sorted_events:
             ev_date = parse_date_str(data["date"])
+            
             if ev_date:
                 month_year_str = ev_date.strftime("%B %Y").upper()
+                delta = (ev_date - today).days
+                if delta == 0:
+                    countdown_str = "[TODAY]"
+                elif delta == 1:
+                    countdown_str = "[Tomorrow]"
+                elif delta > 1:
+                    countdown_str = f"[{delta}d]"
+                else:
+                    countdown_str = "[Done]"
             else:
                 month_year_str = "OTHER EVENTS"
-                
-            if month_year_str not in grouped_by_month:
-                grouped_by_month[month_year_str] = []
-            grouped_by_month[month_year_str].append((eid, data))
+                countdown_str = "[Soon]"
 
-        for month_name, ev_list in grouped_by_month.items():
-            field_box_content = []
-            
-            for eid, data in ev_list:
-                ev_date = parse_date_str(data["date"])
-                
-                if ev_date:
-                    delta = (ev_date - today).days
-                    if delta == 0:
-                        countdown_str = "[TODAY]"
-                    elif delta == 1:
-                        countdown_str = "[Tomorrow]"
-                    elif delta > 1:
-                        countdown_str = f"[{delta}d]"
-                    else:
-                        countdown_str = "[Done]"
-                else:
-                    countdown_str = "[Soon]"
-
-                # Kekalkan tarikh lengkap bersama tahun (cth: 16 Nov 2026) dalam satu baris padat
-                event_line = f"[{eid}] {data['date']} • {data['title']} {countdown_str}"
-                field_box_content.append(event_line)
-
-            field_name = f"📅  {month_name}"
-            field_value = "```yaml\n" + "\n".join(field_box_content) + "\n```"
+            field_name = f"📅  {month_year_str}  •  ID: [{eid}]"
+            field_value = (
+                f"```yaml\n"
+                f"{data['date']} • {data['title']} {countdown_str}\n"
+                f"```"
+            )
             embed.add_field(name=field_name, value=field_value, inline=False)
 
     archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
     embed.add_field(name="📋 ARCHIVE STATUS", value=archive_text, inline=False)
 
-    embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified Pizzin Administrators & Floaters.")
+    embed.set_footer(text="🔒 Security Protocol: Restricted access exclusively to verified PIZZIN Administrators & Floaters.")
 
     view = CalendarControlView()
 
