@@ -293,7 +293,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Single Master List - 0% Risk of Character Limit)
+# 5. CALENDAR BOARD RENDERER (Clean Single Master List - No Long Lines)
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -310,12 +310,12 @@ async def update_calendar_board(guild):
         color=embed_color
     )
     
-    # Susun semua event dalam satu senarai tunggal yang dikumpulkan mengikut bulan secara kemas
+    # Nota ringkas tanpa garisan panjang melampau
     lines = [
         "```yaml",
         "📌 CLUB OPERATIONS:",
-        "• Every Sunday: Club Closed / Rest Day (Sunday Off)",
-        "--------------------------------------------------",
+        "• Sunday: Club Closed",
+        "",
         "📅 MASTER EVENT LISTINGS:"
     ]
     
@@ -335,7 +335,6 @@ async def update_calendar_board(guild):
             else:
                 month_str = "OTHER EVENTS"
                 
-            # Paparkan tajuk bulan sebagai pemisah sekiranya bertukar bulan
             if month_str != current_month_label:
                 current_month_label = month_str
                 lines.append(f"\n[{current_month_label}]")
@@ -357,7 +356,6 @@ async def update_calendar_board(guild):
             
     lines.append("```")
     
-    # Masukkan kesemua paparan dalam description utama (hanya 1 field sahaja digunakan untuk archive)
     embed.description = "\n".join(lines)
     
     archive_text = f"📊 **Monthly Archive:** `{completed_events_count} events successfully completed this month.`"
