@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 import os
 import threading
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==============================================================================
@@ -35,6 +35,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=None, intents=intents)
 
 CALENDAR_CHANNEL_ID = 1563446765657657394  
+MYT = timezone(timedelta(hours=8)) # Waktu Malaysia (UTC+8)
 
 # --- AUTHORIZED ADMINS & FLOATERS ---
 ALLOWED_ADMINS = {
@@ -68,6 +69,9 @@ MONTH_MAP = {
     "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
 }
 
+def get_myt_now():
+    return datetime.now(MYT)
+
 def parse_date_str(date_str):
     try:
         parts = date_str.strip().split()
@@ -77,6 +81,26 @@ def parse_date_str(date_str):
             year = int(parts[2])
             month = MONTH_MAP.get(month_str, 1)
             return date(year, month, day)
+    except Exception:
+        pass
+    return None
+
+def parse_time_str(time_str):
+    """Cuba baca format jam dari time_slot (cth: '10:00 AM', '10:00AM', '22:00', '10 AM')"""
+    try:
+        clean = time_str.strip().upper()
+        # Ambil waktu mula jika ada range (cth: '10:00 AM - 12:00 PM' -> '10:00 AM')
+        if "-" in clean:
+            clean = clean.split("-")[0].strip()
+        elif "TO" in clean:
+            clean = clean.split("TO")[0].strip()
+
+        for fmt in ("%I:%M %p", "%I:%M%p", "%I %p", "%I%p", "%H:%M"):
+            try:
+                t = datetime.strptime(clean, fmt).time()
+                return t
+            except ValueError:
+                continue
     except Exception:
         pass
     return None
@@ -130,15 +154,17 @@ async def on_ready():
         print(f"Failed to sync slash commands: {e}")
 
 # ==============================================================================
-# 3. BACKGROUND TASK: REMINDERS & AUTO FULL-DETAILS CARD ON EVENT DAY
+# 3. BACKGROUND TASK: REAL-TIME 1-MINUTE CHECK (MYT / UTC+8)
 # ==============================================================================
-@tasks.loop(hours=24)
+@tasks.loop(minutes=1)
 async def event_reminder_task():
     global events_records, completed_events_count
     if not events_records:
         return
     
-    today = date.today()
+    now_myt = get_myt_now()
+    today = now_myt.date()
+    current_time = now_myt.time()
     expired_ids = []
     
     for eid, data in events_records.items():
@@ -147,8 +173,10 @@ async def event_reminder_task():
             delta_days = (parsed_date - today).days
             role_ping = f"<@&{data['role_id']}>" if data.get('role_id') else ""
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
+            sent_flags = data.setdefault("sent_reminders", set())
             
-            if delta_days == 2:
+            # 1. Reminder 2 Hari Sebelum (Hantar sekali sahaja)
+            if delta_days == 2 and "2d" not in sent_flags:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
@@ -160,8 +188,11 @@ async def event_reminder_task():
                             f"> 📍 **Location:** {loc_disp}\n"
                             f"> 💬 *{data['desc']}*"
                         )
+                        sent_flags.add("2d")
+                        break
             
-            elif delta_days == 1:
+            # 2. Reminder 1 Hari Sebelum (Hantar sekali sahaja)
+            elif delta_days == 1 and "1d" not in sent_flags:
                 for guild in bot.guilds:
                     channel = guild.get_channel(CALENDAR_CHANNEL_ID)
                     if channel:
@@ -173,26 +204,35 @@ async def event_reminder_task():
                             f"> 📍 **Location:** {loc_disp}\n"
                             f"> 💬 *{data['desc']}*"
                         )
+                        sent_flags.add("1d")
+                        break
             
-            elif delta_days == 0:
-                for guild in bot.guilds:
-                    channel = guild.get_channel(CALENDAR_CHANNEL_ID)
-                    if channel:
-                        loc_disp = format_location_display(guild, data.get('location'))
-                        await channel.send(
-                            f"🚨 **[EVENT HARI INI! / LIVE TODAY!]** @everyone {role_ping}\n"
-                            f"```yaml\n"
-                            f"EVENT    : {data['title']} [{data['category']}]\n"
-                            f"TIME     : {data['date']} | {data['time']}\n"
-                            f"LOCATION : {get_clean_location_name(guild, data.get('location'))}\n"
-                            f"JOIN     : {data['how_join']}\n"
-                            f"DETAILS  : {data['desc']}\n"
-                            f"```\n"
-                            f"📍 **Direct Link:** {loc_disp}\n"
-                            f"🎯 **How to Join:** {data['how_join']}\n"
-                            f"Jumpa semua di sana! 🎉"
-                        )
+            # 3. Hari Kejadian (Semak jam event ikut waktu Malaysia & hantar sekali sahaja)
+            elif delta_days == 0 and "0d" not in sent_flags:
+                event_time = parse_time_str(data["time"])
+                # Jika waktu berjaya dibaca, tunggu sehingga jam semasa >= jam event. Jika tidak, hantar terus.
+                if event_time is None or current_time >= event_time:
+                    for guild in bot.guilds:
+                        channel = guild.get_channel(CALENDAR_CHANNEL_ID)
+                        if channel:
+                            loc_disp = format_location_display(guild, data.get('location'))
+                            await channel.send(
+                                f"🚨 **[EVENT HARI INI! / LIVE TODAY!]** @everyone {role_ping}\n"
+                                f"```yaml\n"
+                                f"EVENT    : {data['title']} [{data['category']}]\n"
+                                f"TIME     : {data['date']} | {data['time']}\n"
+                                f"LOCATION : {get_clean_location_name(guild, data.get('location'))}\n"
+                                f"JOIN     : {data['how_join']}\n"
+                                f"DETAILS  : {data['desc']}\n"
+                                f"```\n"
+                                f"📍 **Direct Link:** {loc_disp}\n"
+                                f"🎯 **How to Join:** {data['how_join']}\n"
+                                f"Jumpa semua di sana! 🎉"
+                            )
+                            sent_flags.add("0d")
+                            break
             
+            # Buang event yang dah lepas lebih 2 hari
             if parsed_date < (today - timedelta(days=2)):
                 expired_ids.append(eid)
                 completed_events_count += 1
@@ -279,7 +319,7 @@ class CalendarControlView(discord.ui.View):
             active_regs = [eid for eid in registered_ids if eid in events_records]
 
             if not active_regs:
-                await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+                await interaction.followup.send("📌 You are not currently registered for any upcoming events.", ephemeral=True)
                 return False
 
             lines = ["**Your Registered Events:**"]
@@ -301,7 +341,7 @@ async def update_calendar_board(guild):
     if not channel:
         return
 
-    today = date.today()
+    today = get_myt_now().date()
     has_live_event = any(parse_date_str(d["date"]) == today for d in events_records.values())
     embed_color = discord.Color.from_rgb(239, 83, 80) if has_live_event else discord.Color.from_rgb(255, 193, 7)
 
@@ -310,7 +350,6 @@ async def update_calendar_board(guild):
         color=embed_color
     )
     
-    # Nota ringkas tanpa garisan panjang melampau
     lines = [
         "```yaml",
         "📌 CLUB OPERATIONS:",
@@ -408,7 +447,8 @@ async def add_event(
         "how_join": how_to_join,
         "role_id": ping_role.id if ping_role else None,
         "category": category.upper(),
-        "desc": description
+        "desc": description,
+        "sent_reminders": set()
     }
 
     try:
