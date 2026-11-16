@@ -86,10 +86,8 @@ def parse_date_str(date_str):
     return None
 
 def parse_time_str(time_str):
-    """Cuba baca format jam dari time_slot (cth: '10:00 AM', '10:00AM', '22:00', '10 AM')"""
     try:
         clean = time_str.strip().upper()
-        # Ambil waktu mula jika ada range (cth: '10:00 AM - 12:00 PM' -> '10:00 AM')
         if "-" in clean:
             clean = clean.split("-")[0].strip()
         elif "TO" in clean:
@@ -171,14 +169,19 @@ async def event_reminder_task():
         parsed_date = parse_date_str(data["date"])
         if parsed_date:
             delta_days = (parsed_date - today).days
+            
             role_ping = f"<@&{data['role_id']}>" if data.get('role_id') else ""
+            ping_text = f"@everyone {role_ping}".strip()
             host_display = f"<@{data['host_id']}>" if data.get('host_id') else "TBA"
             sent_flags = data.setdefault("sent_reminders", set())
             
-            # 1. Reminder 2 Hari Sebelum (Hantar sekali sahaja)
+            # Tentukan channel pengumuman (guna announcement_channel jika ada, jika tak guna calendar channel)
+            target_ch_id = data.get('announcement_channel_id') or CALENDAR_CHANNEL_ID
+            
+            # 1. Reminder 2 Hari Sebelum
             if delta_days == 2 and "2d" not in sent_flags:
                 for guild in bot.guilds:
-                    channel = guild.get_channel(CALENDAR_CHANNEL_ID)
+                    channel = guild.get_channel(target_ch_id)
                     if channel:
                         loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
@@ -191,10 +194,10 @@ async def event_reminder_task():
                         sent_flags.add("2d")
                         break
             
-            # 2. Reminder 1 Hari Sebelum (Hantar sekali sahaja)
+            # 2. Reminder 1 Hari Sebelum
             elif delta_days == 1 and "1d" not in sent_flags:
                 for guild in bot.guilds:
-                    channel = guild.get_channel(CALENDAR_CHANNEL_ID)
+                    channel = guild.get_channel(target_ch_id)
                     if channel:
                         loc_disp = format_location_display(guild, data.get('location'))
                         await channel.send(
@@ -207,17 +210,16 @@ async def event_reminder_task():
                         sent_flags.add("1d")
                         break
             
-            # 3. Hari Kejadian (Semak jam event ikut waktu Malaysia & hantar sekali sahaja)
+            # 3. Hari Kejadian (Live Today Announcement)
             elif delta_days == 0 and "0d" not in sent_flags:
                 event_time = parse_time_str(data["time"])
-                # Jika waktu berjaya dibaca, tunggu sehingga jam semasa >= jam event. Jika tidak, hantar terus.
                 if event_time is None or current_time >= event_time:
                     for guild in bot.guilds:
-                        channel = guild.get_channel(CALENDAR_CHANNEL_ID)
+                        channel = guild.get_channel(target_ch_id)
                         if channel:
                             loc_disp = format_location_display(guild, data.get('location'))
                             await channel.send(
-                                f"🚨 **[EVENT HARI INI! / LIVE TODAY!]** @everyone {role_ping}\n"
+                                f"🚨 **[LIVE TODAY!]** {ping_text}\n"
                                 f"```yaml\n"
                                 f"EVENT    : {data['title']} [{data['category']}]\n"
                                 f"TIME     : {data['date']} | {data['time']}\n"
@@ -227,12 +229,11 @@ async def event_reminder_task():
                                 f"```\n"
                                 f"📍 **Direct Link:** {loc_disp}\n"
                                 f"🎯 **How to Join:** {data['how_join']}\n"
-                                f"Jumpa semua di sana! 🎉"
+                                f"See you all there! 🎉"
                             )
                             sent_flags.add("0d")
                             break
             
-            # Buang event yang dah lepas lebih 2 hari
             if parsed_date < (today - timedelta(days=2)):
                 expired_ids.append(eid)
                 completed_events_count += 1
@@ -319,7 +320,7 @@ class CalendarControlView(discord.ui.View):
             active_regs = [eid for eid in registered_ids if eid in events_records]
 
             if not active_regs:
-                await interaction.followup.send("📌 You are not currently registered for any upcoming events.", ephemeral=True)
+                await interaction.response.send_message("📌 You are not currently registered for any upcoming events.", ephemeral=True)
                 return False
 
             lines = ["**Your Registered Events:**"]
@@ -333,7 +334,7 @@ class CalendarControlView(discord.ui.View):
         return True
 
 # ==============================================================================
-# 5. CALENDAR BOARD RENDERER (Clean Single Master List - No Long Lines)
+# 5. CALENDAR BOARD RENDERER
 # ==============================================================================
 async def update_calendar_board(guild):
     global calendar_message_id, completed_events_count
@@ -428,6 +429,7 @@ async def add_event(
     location: str,
     how_to_join: str,
     ping_role: discord.Role = None, 
+    announcement_channel: discord.TextChannel = None, # Pilihan channel announcement khas
     category: str = "COMMUNITY", 
     description: str = "Official details will be announced shortly."
 ):
@@ -446,6 +448,7 @@ async def add_event(
         "location": location,
         "how_join": how_to_join,
         "role_id": ping_role.id if ping_role else None,
+        "announcement_channel_id": announcement_channel.id if announcement_channel else None,
         "category": category.upper(),
         "desc": description,
         "sent_reminders": set()
@@ -453,7 +456,8 @@ async def add_event(
 
     try:
         await update_calendar_board(interaction.guild)
-        await interaction.followup.send(f"✅ Event successfully registered! Assigned Reference ID: `{eid}`", ephemeral=True)
+        target_ch_name = announcement_channel.mention if announcement_channel else "Calendar Channel"
+        await interaction.followup.send(f"✅ Event successfully registered! Assigned ID: `{eid}` (Announcements will go to {target_ch_name})", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"⚠️ Saved, but board update failed: `{e}`", ephemeral=True)
 
